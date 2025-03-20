@@ -1,0 +1,348 @@
+classdef App_Fusion < matlab.apps.AppBase
+
+    % Properties that correspond to app components
+    properties (Access = public)
+        UIFigure                matlab.ui.Figure
+        CloseButton             matlab.ui.control.Button
+        SaveButton              matlab.ui.control.Button
+        FuseImagesButton        matlab.ui.control.Button
+        ChooseImageFusionMethodDropDown  matlab.ui.control.DropDown
+        ChooseImageFusionMethodDropDownLabel  matlab.ui.control.Label
+        LoadPanimageButton      matlab.ui.control.Button
+        LoadColoredimageButton  matlab.ui.control.Button
+        UIAxes_4                matlab.ui.control.UIAxes
+        UIAxes_3                matlab.ui.control.UIAxes
+        UIAxes                  matlab.ui.control.UIAxes
+    end
+
+    % Define variables to use them into the code publically.
+    properties (Access = public)
+        Property % Description
+        inputColImg;
+        inputPanImg;
+        outputImg;
+    end
+    
+    methods (Access = public)
+        % 1. Function for Brovey Transform Fusion on input images
+        function outputImgB = BroveyTransform(~,inputImgCol, inputImgGray)
+            % Seperate colored image into red, green and blue.
+            redImg = double(inputImgCol(:, :, 1));
+            greenImg = double(inputImgCol(:, :, 2));
+            blueImg = double(inputImgCol(:, :, 3));
+            pangray = double(inputImgGray);
+    
+            redOutB = (redImg .* pangray) ./ (redImg + greenImg + blueImg);
+            greenOutB = (greenImg .* pangray) ./ (redImg + greenImg + blueImg);
+            blueOutB = (blueImg .* pangray) ./ (redImg + greenImg + blueImg);
+    
+            outputImgB(:, :, 1) = uint8(redOutB);
+            outputImgB(:, :, 2) = uint8(greenOutB);
+            outputImgB(:, :, 3) = uint8(blueOutB);
+        end
+
+    end
+    
+    methods (Access = public)
+        % 2. Function for IHS Fusion on input images
+        function outputImgI = IHSFusion(~,inputImgCol, inputImgGray)
+            % Seperate colored image into red, green and blue.
+            redImg = double(inputImgCol(:, :, 1));
+            greenImg = double(inputImgCol(:, :, 2));
+            blueImg = double(inputImgCol(:, :, 3));
+            pangray = double(inputImgGray);
+    
+            intensityComp1 = (redImg / sqrt(6)) + (greenImg / sqrt(6)) - (2 * blueImg / sqrt(6));
+            intensityComp2 = (redImg / sqrt(2)) - (greenImg / sqrt(2));
+    
+            redOutI = (pangray) + (intensityComp1 / sqrt(6)) + (intensityComp2 / sqrt(2));
+            greenOutI = (pangray) + (intensityComp1 / sqrt(6)) - (intensityComp2 / sqrt(2));
+            blueOutI = (pangray) - (2 * intensityComp1 / sqrt(6));
+    
+            outputImgI(:, :, 1) = uint8(redOutI);
+            outputImgI(:, :, 2) = uint8(greenOutI);
+            outputImgI(:, :, 3) = uint8(blueOutI);
+            app.outputImg = outputImgI;
+        end
+
+    end
+    
+    methods (Access = public)
+        % 3. Function for PCA Fusion on input images
+        function outputImgP = PCAFusion(~,inputImgCol, inputImgGray)
+            % Seperate colored image into red, green and blue.
+            redImg = double(inputImgCol(:, :, 1));
+            greenImg = double(inputImgCol(:, :, 2));
+            blueImg = double(inputImgCol(:, :, 3));
+            pangray = double(inputImgGray);
+            
+            c = cov([redImg(:), greenImg(:), blueImg(:)]);
+            [e, ~] = eig(c); % Eigenvalues and Eigenvectors
+            
+            principleComp1 = redImg * e(1, 1) + greenImg * e(2, 1) + blueImg * e(3, 1);
+            principleComp2 = redImg * e(1, 2) + greenImg * e(2, 2) + blueImg * e(3, 2);
+            
+            redOutP = principleComp1 * e(1, 1) + principleComp2 * e(1, 2) + pangray * e(1, 3);
+            greenOutP = principleComp1 * e(2, 1) + principleComp2 * e(2, 2) + pangray * e(2, 3);
+            blueOutP = principleComp1 * e(3, 1) + principleComp2 * e(3, 2) + pangray * e(3, 3);
+            
+            outputImgP(:, :, 1) = uint8(redOutP);
+            outputImgP(:, :, 2) = uint8(greenOutP);
+            outputImgP(:, :, 3) = uint8(blueOutP);
+            app.outputImg = outputImgP;
+        end
+
+        % 4. Function for Wavelet Trasform Fusion on input images
+        function outputImgW = WaveletFusion(~,inputImgCol, inputImgGray)
+            % Seperate colored image into red, green and blue.
+            redImg = double(inputImgCol(:, :, 1));
+            greenImg = double(inputImgCol(:, :, 2));
+            blueImg = double(inputImgCol(:, :, 3));
+            pangray = double(inputImgGray);
+            
+            [LLR, ~, ~, ~] = dwt2(redImg, 'db4');
+            [LLG, ~, ~, ~] = dwt2(greenImg, 'db4');
+            [LLB, ~, ~, ~] = dwt2(blueImg, 'db4');
+            [LLpan, LHpan, HLpan, HHpan] = dwt2(pangray, 'db4');
+            
+            redOutW = idwt2(LLR, LHpan, HLpan, HHpan, 'db4');
+            greenOutW = idwt2(LLG, LHpan, HLpan, HHpan, 'db4');
+            blueOutW = idwt2(LLB, LHpan, HLpan, HHpan, 'db4');
+            
+            outputImgW(:, :, 1) = uint8(redOutW);
+            outputImgW(:, :, 2) = uint8(greenOutW);
+            outputImgW(:, :, 3) = uint8(blueOutW);
+            app.outputImg = outputImgW;
+        end
+
+    end
+    
+
+    % Callbacks that handle component events
+    methods (Access = private)
+
+        % Button pushed function: LoadColoredimageButton
+        function LoadColoredimageButtonPushed(app, event)
+            % Get the name and path of the coloredimage.
+            [fcname, fcpath]= uigetfile("*.*");
+
+            % Read the colored input image.
+            app.inputColImg = imread(fcname);
+
+            % Display the colored input image.
+            imshow(app.inputColImg, 'Parent', app.UIAxes);
+        end
+
+        % Button pushed function: LoadPanimageButton
+        function LoadPanimageButtonPushed(app, event)
+             % Get the name and path of the coloredimage.
+            [fpname, fppath]= uigetfile("*.*");
+
+            % Read the colored input image.
+            app.inputPanImg = imread(fpname);
+
+            % Display the colored input image.
+            imshow(app.inputPanImg, 'Parent', app.UIAxes_4);
+        end
+
+        % Button pushed function: FuseImagesButton
+        function FuseImagesButtonPushed(app, event)
+            userSelection = app.ChooseImageFusionMethodDropDown.Value;
+
+            if isempty(app.inputColImg) || isempty(app.inputPanImg)
+                uialert(app.UIFigure, 'Please load both images first.', 'Error');
+                 return;
+           end
+        % Use the switch-case method to check the selected drop down by the
+        % user.
+        switch userSelection
+            case 'Brovey Transform'
+                app.outputImg = app.BroveyTransform(app.inputColImg, app.inputPanImg);
+            case 'IHS'
+                app.outputImg = app.IHSFusion(app.inputColImg, app.inputPanImg);
+            case 'PCA'
+                app.outputImg = app.PCAFusion(app.inputColImg, app.inputPanImg);
+            case 'Wavelet Transform'
+                app.outputImg = app.WaveletFusion(app.inputColImg, app.inputPanImg);
+        end
+        % Display the selected output.
+        imshow(app.outputImg, 'Parent', app.UIAxes_3);
+        end
+
+        % Button pushed function: SaveButton
+        function SaveButtonPushed(app, event)
+            [file, path] = uiputfile({'*.png'; '*.jpg'; '*.tif'}, 'Save Fused Image');
+            if isequal(file, 0)
+                return;
+            end
+            imwrite(uint8(app.FusedOutputImage), fullfile(path, file));
+        end
+
+        % Button pushed function: CloseButton
+        function CloseButtonPushed(app, event)
+             % Close application
+            close(app.UIFigure);
+        end
+    end
+
+    % Component initialization
+    methods (Access = private)
+
+        % Create UIFigure and components
+        function createComponents(app)
+
+            % Create UIFigure and hide until all components are created
+            app.UIFigure = uifigure('Visible', 'off');
+            app.UIFigure.Color = [0.9098 0.7725 0.7725];
+            colormap(app.UIFigure, 'turbo');
+            app.UIFigure.Position = [100 100 647 480];
+            app.UIFigure.Name = 'MATLAB App';
+            app.UIFigure.Pointer = 'hand';
+
+            % Create UIAxes
+            app.UIAxes = uiaxes(app.UIFigure);
+            title(app.UIAxes, 'Colored Image')
+            app.UIAxes.AmbientLightColor = [0.902 0.902 0.902];
+            app.UIAxes.FontName = 'Times New Roman';
+            app.UIAxes.FontAngle = 'italic';
+            app.UIAxes.XTick = [];
+            app.UIAxes.XTickLabel = '';
+            app.UIAxes.YTick = [];
+            app.UIAxes.Color = [0.902 0.902 0.902];
+            app.UIAxes.Box = 'on';
+            colormap(app.UIAxes, 'turbo')
+            app.UIAxes.Position = [60 247 203 136];
+
+            % Create UIAxes_3
+            app.UIAxes_3 = uiaxes(app.UIFigure);
+            title(app.UIAxes_3, 'Fused Image')
+            app.UIAxes_3.AmbientLightColor = [0.902 0.902 0.902];
+            app.UIAxes_3.FontName = 'Times New Roman';
+            app.UIAxes_3.FontAngle = 'italic';
+            app.UIAxes_3.XTick = [];
+            app.UIAxes_3.XTickLabel = '';
+            app.UIAxes_3.YTick = [];
+            app.UIAxes_3.Color = [0.902 0.902 0.902];
+            app.UIAxes_3.Box = 'on';
+            colormap(app.UIAxes_3, 'turbo')
+            app.UIAxes_3.Position = [213 42 203 136];
+
+            % Create UIAxes_4
+            app.UIAxes_4 = uiaxes(app.UIFigure);
+            title(app.UIAxes_4, 'Pan Image')
+            app.UIAxes_4.AmbientLightColor = [0.902 0.902 0.902];
+            app.UIAxes_4.FontName = 'Times New Roman';
+            app.UIAxes_4.FontAngle = 'italic';
+            app.UIAxes_4.XTick = [];
+            app.UIAxes_4.XTickLabel = '';
+            app.UIAxes_4.YTick = [];
+            app.UIAxes_4.Color = [0.902 0.902 0.902];
+            app.UIAxes_4.Box = 'on';
+            colormap(app.UIAxes_4, 'turbo')
+            app.UIAxes_4.Position = [384 247 203 136];
+
+            % Create LoadColoredimageButton
+            app.LoadColoredimageButton = uibutton(app.UIFigure, 'push');
+            app.LoadColoredimageButton.ButtonPushedFcn = createCallbackFcn(app, @LoadColoredimageButtonPushed, true);
+            app.LoadColoredimageButton.IconAlignment = 'center';
+            app.LoadColoredimageButton.BackgroundColor = [0.7529 0.8314 0.9412];
+            app.LoadColoredimageButton.FontName = 'Times New Roman';
+            app.LoadColoredimageButton.FontWeight = 'bold';
+            app.LoadColoredimageButton.FontAngle = 'italic';
+            app.LoadColoredimageButton.Position = [90 410 123 34];
+            app.LoadColoredimageButton.Text = 'Load Colored image';
+
+            % Create LoadPanimageButton
+            app.LoadPanimageButton = uibutton(app.UIFigure, 'push');
+            app.LoadPanimageButton.ButtonPushedFcn = createCallbackFcn(app, @LoadPanimageButtonPushed, true);
+            app.LoadPanimageButton.IconAlignment = 'center';
+            app.LoadPanimageButton.BackgroundColor = [0.749 0.8314 0.9412];
+            app.LoadPanimageButton.FontName = 'Times New Roman';
+            app.LoadPanimageButton.FontWeight = 'bold';
+            app.LoadPanimageButton.FontAngle = 'italic';
+            app.LoadPanimageButton.Position = [424 410 123 34];
+            app.LoadPanimageButton.Text = 'Load Pan image';
+
+            % Create ChooseImageFusionMethodDropDownLabel
+            app.ChooseImageFusionMethodDropDownLabel = uilabel(app.UIFigure);
+            app.ChooseImageFusionMethodDropDownLabel.BackgroundColor = [0.4431 0.5412 0.6902];
+            app.ChooseImageFusionMethodDropDownLabel.HorizontalAlignment = 'center';
+            app.ChooseImageFusionMethodDropDownLabel.FontName = 'Times New Roman';
+            app.ChooseImageFusionMethodDropDownLabel.FontWeight = 'bold';
+            app.ChooseImageFusionMethodDropDownLabel.FontAngle = 'italic';
+            app.ChooseImageFusionMethodDropDownLabel.FontColor = [1 1 1];
+            app.ChooseImageFusionMethodDropDownLabel.Position = [79 218 164 22];
+            app.ChooseImageFusionMethodDropDownLabel.Text = 'Choose Image Fusion Method ';
+
+            % Create ChooseImageFusionMethodDropDown
+            app.ChooseImageFusionMethodDropDown = uidropdown(app.UIFigure);
+            app.ChooseImageFusionMethodDropDown.Items = {'Choose', 'Brovey Transform', 'IHS', 'PCA', 'Wavelet Transform'};
+            app.ChooseImageFusionMethodDropDown.FontName = 'Times New Roman';
+            app.ChooseImageFusionMethodDropDown.FontWeight = 'bold';
+            app.ChooseImageFusionMethodDropDown.FontAngle = 'italic';
+            app.ChooseImageFusionMethodDropDown.FontColor = [1 1 1];
+            app.ChooseImageFusionMethodDropDown.BackgroundColor = [0.4431 0.5412 0.6902];
+            app.ChooseImageFusionMethodDropDown.Position = [252 216 144 25];
+            app.ChooseImageFusionMethodDropDown.Value = 'Choose';
+
+            % Create FuseImagesButton
+            app.FuseImagesButton = uibutton(app.UIFigure, 'push');
+            app.FuseImagesButton.ButtonPushedFcn = createCallbackFcn(app, @FuseImagesButtonPushed, true);
+            app.FuseImagesButton.VerticalAlignment = 'top';
+            app.FuseImagesButton.BackgroundColor = [0.7529 0.9412 0.8902];
+            app.FuseImagesButton.FontName = 'Times New Roman';
+            app.FuseImagesButton.FontWeight = 'bold';
+            app.FuseImagesButton.FontAngle = 'italic';
+            app.FuseImagesButton.Position = [450 218 97 23];
+            app.FuseImagesButton.Text = 'Fuse Images';
+
+            % Create SaveButton
+            app.SaveButton = uibutton(app.UIFigure, 'push');
+            app.SaveButton.ButtonPushedFcn = createCallbackFcn(app, @SaveButtonPushed, true);
+            app.SaveButton.BackgroundColor = [0.7451 0.8863 0.9216];
+            app.SaveButton.FontName = 'Times New Roman';
+            app.SaveButton.FontWeight = 'bold';
+            app.SaveButton.FontAngle = 'italic';
+            app.SaveButton.Position = [522 102 88 29];
+            app.SaveButton.Text = 'Save';
+
+            % Create CloseButton
+            app.CloseButton = uibutton(app.UIFigure, 'push');
+            app.CloseButton.ButtonPushedFcn = createCallbackFcn(app, @CloseButtonPushed, true);
+            app.CloseButton.BackgroundColor = [0.851 0.5882 0.5882];
+            app.CloseButton.FontName = 'Times New Roman';
+            app.CloseButton.FontWeight = 'bold';
+            app.CloseButton.FontAngle = 'italic';
+            app.CloseButton.Position = [523 57 88 26];
+            app.CloseButton.Text = 'Close';
+
+            % Show the figure after all components are created
+            app.UIFigure.Visible = 'on';
+        end
+    end
+
+    % App creation and deletion
+    methods (Access = public)
+
+        % Construct app
+        function app = App_Fusion
+
+            % Create UIFigure and components
+            createComponents(app)
+
+            % Register the app with App Designer
+            registerApp(app, app.UIFigure)
+
+            if nargout == 0
+                clear app
+            end
+        end
+
+        % Code that executes before app deletion
+        function delete(app)
+
+            % Delete UIFigure when app is deleted
+            delete(app.UIFigure)
+        end
+    end
+end
